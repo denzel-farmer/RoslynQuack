@@ -15,7 +15,7 @@ namespace Quack.Analysis
         public TypeEvidenceRuleSet(SemanticModel model, Logger logger)
         {
             // TODO find a way to not pass logger everywhere?
-            rules = [new CastRule(logger), new JSONDeserializationRule(logger)];
+            rules = [new CastRule(logger), new JSONDeserializationRule(logger), new MemberAccessRule(logger)];
             this.model = model;
         }
 
@@ -57,11 +57,11 @@ namespace Quack.Analysis
         public abstract TypeEvidence? CheckNode(SyntaxNode node, SemanticModel model);
 
 
-      //  public abstract TypeEvidence? CheckSymbol(ISymbol symbol);
+        //  public abstract TypeEvidence? CheckSymbol(ISymbol symbol);
 
     }
 
-    class CastRule : TypeEvidenceRule 
+    class CastRule : TypeEvidenceRule
     {
         private const string reason = "Cast";
         public CastRule(Logger logger) : base(logger)
@@ -96,10 +96,60 @@ namespace Quack.Analysis
         }
 
     }
-// TODO add rules to get initial type (like initial deserialization call, and member access)
+    // TODO add rules to get initial type (like initial deserialization call, and member access)
     // DeserializeObject<T>(string json) -> T
     // T out = DeserializeObject(string json, Type type) -> T
     // a.b -> type of member b in typeof(a)
+
+    class MemberAccessRule : TypeEvidenceRule
+    {
+        private const string reason = "Member access";
+        public MemberAccessRule(Logger logger) : base(logger)
+        {
+
+        }
+
+        public override bool IsExact()
+        {
+            return true;
+        }
+
+        public override TypeEvidence? CheckNode(SyntaxNode node, SemanticModel model)
+        {
+            var nodeKind = node.Kind();
+            if (nodeKind == SyntaxKind.SimpleMemberAccessExpression)
+            {
+                logger.Info("Node is a member access expression");
+                var memberAccessNode = (MemberAccessExpressionSyntax)node;
+
+                var memberName = memberAccessNode.Name.ToString();
+
+                logger.Info("Member name: " + memberName);
+                
+                var expr = memberAccessNode.Expression;
+                var exprType = model.GetTypeInfo(expr).Type;
+
+                logger.Info("Container type: " + exprType.ToString());
+
+                // Check if member is a field or property
+                var memberSymbol = model.GetSymbolInfo(memberAccessNode).Symbol;
+                
+                // Display member kind and type
+                logger.Info("Member kind: " + memberSymbol.Kind.ToString());
+
+                // If kind is field, get field type
+                if (memberSymbol.Kind == SymbolKind.Field)
+                {
+                    var fieldSymbol = (IFieldSymbol)memberSymbol;
+                    logger.Info("Field type: " + fieldSymbol.Type.ToString());
+                    return new TypeEvidence(node, fieldSymbol.Type, reason);
+                }
+                // Otherwise, not valid 
+                logger.Info("Member is not a field, no type evidence can be generated");
+            }
+            return null;
+        }
+    }
 
     class JSONDeserializationRule : TypeEvidenceRule
     {
@@ -138,7 +188,7 @@ namespace Quack.Analysis
 
                     // var typeArg = invocationNode.ArgumentList.Arguments[0].Expression;
                     // var type = model.GetTypeInfo(typeArg).Type;
-                    
+
                     var type = methodSymbol.TypeArguments[0];
 
                     logger.Assert(methodSymbol.TypeArguments.Length == 1, "DeserializeObject has more than one type argument");
@@ -154,9 +204,9 @@ namespace Quack.Analysis
     }
 }
 
-    /* TODO expand inheritence to remove duplicate code among rules (e.g. unify rules that 
-     * check the kind of the containing symbol) */
-     // TODO delete this rule, and make sure these rules really can't tell us anything more than the compiled type
+/* TODO expand inheritence to remove duplicate code among rules (e.g. unify rules that 
+ * check the kind of the containing symbol) */
+// TODO delete this rule, and make sure these rules really can't tell us anything more than the compiled type
 //     class FuncArgRule : TypeEvidenceRule
 //     {
 //         private const string reason = "Function argument";
@@ -205,7 +255,7 @@ namespace Quack.Analysis
 //             }
 
 //             // var parentNode = node.Parent;
-            
+
 //             // logger.Info("Parent node: \n" + parentNode.ToString() + "\n");
 
 //             // var parentNodeKind = parentNode.Kind();

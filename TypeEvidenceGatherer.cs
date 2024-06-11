@@ -209,7 +209,21 @@ namespace Quack.Analysis
 
                     logger.Assert(memberNode.OperatorToken.IsKind(SyntaxKind.DotToken), "Unhandled member access operator in UserNodes(): " + memberNode.OperatorToken.Kind());
 
-                    memberUsageNodes.Add(node.Parent);
+                    var memberAccessNode = (MemberAccessExpressionSyntax)node;
+
+                    var expr = memberAccessNode.Expression;
+                    var exprType = deserCall.model.GetTypeInfo(expr).Type;
+
+                    // Check if member is a field or property
+                    var memberSymbol = deserCall.model.GetSymbolInfo(memberAccessNode).Symbol;
+
+                    // If kind is field, we want to follow it so add to member usage
+                    if (memberSymbol.Kind == SymbolKind.Field)
+                    {
+                        memberUsageNodes.Add(node.Parent);
+                    }
+                    // Otherwise, we can skip it (TODO this probably needs more though)
+                    logger.Info("Member is not a field, no users to add");
                     break;
 
                 /* For 'anonymous' nodes that just return a value, the only user is parent (TODO some of these
@@ -275,9 +289,9 @@ namespace Quack.Analysis
                 // that includes all subclasses of the old base evidence and the new evidence
                 if (initialEvidence != null && initialEvidence.Count > 0)
                 {
-                   baseEvidence.AddRange(initialEvidence.Except(baseEvidence));
+                    baseEvidence.AddRange(initialEvidence.Except(baseEvidence));
                 }
-                
+
                 return [new UntrackableTypeEvidence(node, baseEvidence, "Untrackable user node")];
             }
             allowList.AddRange(baseEvidence.Except(allowList));
