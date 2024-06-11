@@ -40,7 +40,7 @@ namespace Quack.Analysis
                 var referenceNode = location.Location.SourceTree.GetRoot().FindNode(location.Location.SourceSpan);
                 logger.Info("User Node: " + MiscUtils.FirstNLines(referenceNode.ToString(), 3));
 
-                logger.Assert(referenceNode.IsKind(SyntaxKind.IdentifierName), "Unhandled reference node kind in UserNodes(): " + referenceNode.Kind());
+                logger.Assert(referenceNode.IsKind(SyntaxKind.IdentifierName) || referenceNode.IsKind(SyntaxKind.Argument), "Unhandled reference node kind in UserNodes(): " + referenceNode.Kind());
 
 
                 nodeList.Add(referenceNode);
@@ -241,41 +241,109 @@ namespace Quack.Analysis
             return (nodeList, memberUsageNodes);
         }
 
-        private List<TypeEvidence> AnalyzeNode(SyntaxNode node)
+
+        // TODO create a class to hold return object?
+        // returns all possible types of the node except for the base evidence
+        private List<TypeEvidence>? AnalyzeNode(SyntaxNode node, List<TypeEvidence> baseEvidence)
         {
             logger.Info("Analyzing node: " + MiscUtils.FirstNLines(node.ToString(), 3));
 
             // Create a list of evidence for this node
             var allowList = new List<TypeEvidence>();
+            var nextBaseEvidence = baseEvidence;
 
-            // Extract evidence from the toplevel node 
-            allowList.AddRange(ruleSet.ExtractEvidence(node));
+            // Extract evidence from the toplevel node
+            var initialEvidence = ruleSet.ExtractEvidence(node);
 
-            // Retrieve all users of the present node, and nodes of all member usages on the present node
-            (var rootUserNodes, var memberNodes) = UserNodes(node);
+            // If node provides evidence, we can safely replace base evidence
+            // This is where 'narrowing' happens, because we no longer consider
+            // previous base evidence
+            if (initialEvidence != null && initialEvidence.Count > 0)
+            {
+                nextBaseEvidence = initialEvidence;
+            }
+
+            // Find each user node of the present node
+            var (rootUserNodes, memberNodes) = UserNodes(node);
+            // If any user node is untrackable (i.e. external method), return 
+            // an untrackable version of the base evidence
             if (rootUserNodes == null)
             {
                 logger.Info("At least one user node could not be analyzed, cannot resetrict type further");
-                // Exits early, type evidence SHOULD have added all possible types
-                return allowList;
-            }
 
-            // Analyze each member-use node
+                // Exits early, returning base evidence plus a new untrackable evidence
+                // that includes all subclasses of the old base evidence and the new evidence
+                if (initialEvidence != null && initialEvidence.Count > 0)
+                {
+                   baseEvidence.AddRange(initialEvidence.Except(baseEvidence));
+                }
+                
+                return [new UntrackableTypeEvidence(node, baseEvidence, "Untrackable user node")];
+            }
+            allowList.AddRange(baseEvidence.Except(allowList));
+
             foreach (var memberNode in memberNodes)
             {
-                var memberAllowList = AnalyzeNode(memberNode);
+                // TODO empty base evidence might not be right here? it should populate with initial evidence
+                var memberAllowList = AnalyzeNode(memberNode, []);
                 // For now, we don't track member-use evidence separately since
                 // it all gets combined in the final binder anyways (but might be nice to separate for debugging)
-                allowList.AddRange(memberAllowList);
+                allowList.AddRange(memberAllowList.Except(allowList));
             }
 
+            // Analyze each user node 
             foreach (var userNode in rootUserNodes)
             {
-                var userAllowList = AnalyzeNode(userNode);
-                allowList.AddRange(userAllowList);
+                // Each user node starts with the base evidence (i.e. its type is definitely base evidence or a subclass of it)
+                var userEvidence = AnalyzeNode(userNode, nextBaseEvidence);
+                allowList.AddRange(userEvidence.Except(allowList));
             }
-
             return allowList;
+            // // New base evidence is the intersection of the base evidence and the initial evidence
+            // // TODO prevent duplicate evidence
+            // if (initialEvidence != null)
+            // {
+            //     nextBaseEvidence.AddRange(initialEvidence);
+            // }
+
+            // // Retrieve all users of the present node, and nodes of all member usages on the present node
+            // (var rootUserNodes, var memberNodes) = UserNodes(node);
+            // if (rootUserNodes == null || rootUserNodes.Count == 0)
+            // {
+            //     logger.Info("At least one user node could not be analyzed, cannot resetrict type further");
+            //     // Exits early, returning initial evidence and base evidence
+            //     return nextBaseEvidence;
+            // }
+
+
+            // // Analyze each member-use node
+            // foreach (var memberNode in memberNodes)
+            // {
+            //     // TODO empty base evidence might not be right here? should populate with initial evidence
+            //     var memberAllowList = AnalyzeNode(memberNode, []);
+            //     // For now, we don't track member-use evidence separately since
+            //     // it all gets combined in the final binder anyways (but might be nice to separate for debugging)
+            //     allowList.AddRange(memberAllowList);
+            // }
+
+            // foreach (var userNode in rootUserNodes)
+            // {
+            //     var userAllowList = AnalyzeNode(userNode, nextBaseEvidence);
+
+            //     // If any user node has no evidence, return the initial evidence
+            //     // Anything already collected is irrelevant (although could be 
+            //     // added anyways because it should be subclasses of the initial evidence)
+            //     if (userAllowList == null || userAllowList.Count == 0)
+            //     {
+            //         logger.Info("At least one user node could not be analyzed, cannot resetrict type further");
+            //         // Exits early, returning initial evidence
+            //         return nextBaseEvidence;
+            //     }
+
+            //     allowList.AddRange(userAllowList);
+            // }
+
+            // return allowList;
         }
 
 
@@ -285,7 +353,7 @@ namespace Quack.Analysis
             // Follow the deserialization call node 
             var node = deserCall.node;
 
-            gatheredEvidence = AnalyzeNode(node);
+            gatheredEvidence = AnalyzeNode(node, []);
 
             logger.Info("Finished gathering evidence");
             foreach (var evidence in gatheredEvidence)
