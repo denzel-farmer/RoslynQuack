@@ -15,7 +15,7 @@ namespace Quack.Analysis
         public TypeEvidenceRuleSet(SemanticModel model, Logger logger)
         {
             // TODO find a way to not pass logger everywhere?
-            rules = [new CastRule(logger)];
+            rules = [new CastRule(logger), new JSONDeserializationRule(logger)];
             this.model = model;
         }
 
@@ -57,7 +57,7 @@ namespace Quack.Analysis
         public abstract TypeEvidence? CheckNode(SyntaxNode node, SemanticModel model);
 
 
-        public abstract TypeEvidence? CheckSymbol(ISymbol symbol);
+      //  public abstract TypeEvidence? CheckSymbol(ISymbol symbol);
 
     }
 
@@ -95,18 +95,64 @@ namespace Quack.Analysis
             return null;
         }
 
-        public override TypeEvidence? CheckSymbol(ISymbol symbol)
-        {
-            return null;
-        }
-
     }
-}
-
 // TODO add rules to get initial type (like initial deserialization call, and member access)
     // DeserializeObject<T>(string json) -> T
     // T out = DeserializeObject(string json, Type type) -> T
     // a.b -> type of member b in typeof(a)
+
+    class JSONDeserializationRule : TypeEvidenceRule
+    {
+        private const string reason = "JSON Deserialization";
+        public JSONDeserializationRule(Logger logger) : base(logger)
+        {
+
+        }
+
+        public override bool IsExact()
+        {
+            return true;
+        }
+
+        public override TypeEvidence? CheckNode(SyntaxNode node, SemanticModel model)
+        {
+            var nodeKind = node.Kind();
+            if (nodeKind == SyntaxKind.InvocationExpression)
+            {
+                logger.Info("Node is an invocation expression");
+                var invocationNode = (InvocationExpressionSyntax)node;
+
+                var methodSymbol = (IMethodSymbol)model.GetSymbolInfo(invocationNode).Symbol;
+
+                if (methodSymbol == null)
+                {
+                    logger.Warn("Method symbol is null");
+                    return null;
+                }
+
+                logger.Info("Method symbol: " + methodSymbol.ToString());
+
+                if (methodSymbol.Name == "DeserializeObject")
+                {
+                    logger.Info("Method is DeserializeObject, extracting initial type");
+
+                    // var typeArg = invocationNode.ArgumentList.Arguments[0].Expression;
+                    // var type = model.GetTypeInfo(typeArg).Type;
+                    
+                    var type = methodSymbol.TypeArguments[0];
+
+                    logger.Assert(methodSymbol.TypeArguments.Length == 1, "DeserializeObject has more than one type argument");
+                    logger.Assert(methodSymbol.TypeArguments[0].Kind == SymbolKind.NamedType, "Type argument is not a named type");
+
+                    logger.Info("Type argument: " + type.ToString());
+
+                    return new TypeEvidence(node, type, reason);
+                }
+            }
+            return null;
+        }
+    }
+}
 
     /* TODO expand inheritence to remove duplicate code among rules (e.g. unify rules that 
      * check the kind of the containing symbol) */
