@@ -223,6 +223,7 @@ namespace Quack.Analysis
                         memberUsageNodes.Add(node.Parent);
                     }
                     // Otherwise, we can skip it (TODO this probably needs more though)
+                    // TODO properties definitely need to be handled more carefully
                     logger.Info("Member is not a field, no users to add");
                     break;
 

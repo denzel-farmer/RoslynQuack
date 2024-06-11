@@ -60,9 +60,9 @@ namespace SerializeBasic
         public DateTimeOffset Date { get; set; }
         public int TemperatureCelsius { get; set; }
         public string? Summary { get; set; }
-        public WindForecast Wind { get; set; }
+        public WindForecast Wind; //{ get; set; }
         // possible vulnerability: too broad of a type
-        public System.Object RadarInfo { get; set; }
+        public System.Object RadarInfo; //{ get; set; }
     }
 
     public class DurangoWeatherForecast : WeatherForecast
