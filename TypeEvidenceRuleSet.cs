@@ -102,6 +102,12 @@ namespace Quack.Analysis
 
     }
 }
+
+// TODO add rules to get initial type (like initial deserialization call, and member access)
+    // DeserializeObject<T>(string json) -> T
+    // T out = DeserializeObject(string json, Type type) -> T
+    // a.b -> type of member b in typeof(a)
+
     /* TODO expand inheritence to remove duplicate code among rules (e.g. unify rules that 
      * check the kind of the containing symbol) */
      // TODO delete this rule, and make sure these rules really can't tell us anything more than the compiled type
