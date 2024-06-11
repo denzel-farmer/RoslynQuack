@@ -54,16 +54,17 @@ namespace Quack.Analysis
         /* For a given node, retrive all nodes which 'use' that node */
         /* TODO build out with more cases--currently adding case-by-case as they appear
         in test program */
-        private List<SyntaxNode>? UserNodes(SyntaxNode node)
+        private (List<SyntaxNode>?, List<SyntaxNode>?) UserNodes(SyntaxNode node)
         {
             // TODO implement this
             if (node == null || node.Parent == null)
             {
                 logger.Info("UserNodes() reached null node or parent");
-                return [];
+                return ([], []);
             }
 
             var nodeList = new List<SyntaxNode>();
+            var memberUsageNodes = new List<SyntaxNode>();
             var nodeKind = node.Kind();
 
             logger.Info("Finding user nodes for node of kind " + nodeKind);
@@ -93,7 +94,7 @@ namespace Quack.Analysis
                     if (syntaxReference.Length == 0)
                     {
                         logger.Warn("Could not find method declaration (may be external method), so cannot restrict type further");
-                        return null;
+                        return (null, null);
                     }
 
                     var declaration = syntaxReference.Single().GetSyntax() as MethodDeclarationSyntax;
@@ -194,13 +195,27 @@ namespace Quack.Analysis
                     nodeList.Add(node.Parent); // TODO make sure this is required
                     break;
 
+                // TODO could do member analysis here? Probably not, probably wait until allowList finished
+                // then convert each possible object to an object graph
+                // TODO handle pointer member access expression
+                case SyntaxKind.SimpleMemberAccessExpression:
+                    // In this case, just add the 'parent.member' node to the member usage list
+                    logger.Info("Handling member access node");
+
+                    var memberNode = (MemberAccessExpressionSyntax)node;
+
+                    logger.Info("Member name:" + memberNode.Name);
+                    logger.Info("Operator Token: " + memberNode.OperatorToken);
+
+                    logger.Assert(memberNode.OperatorToken.IsKind(SyntaxKind.DotToken), "Unhandled member access operator in UserNodes(): " + memberNode.OperatorToken.Kind());
+
+                    memberUsageNodes.Add(node.Parent);
+                    break;
+
                 /* For 'anonymous' nodes that just return a value, the only user is parent (TODO some of these
                 might need more logic) */
                 case SyntaxKind.InvocationExpression:
                 case SyntaxKind.IdentifierName:
-                // TODO could do member analysis here? Probably not, probably wait until allowList finished
-                // then convert each possible object to an object graph
-                case SyntaxKind.SimpleMemberAccessExpression:
                 case SyntaxKind.ExpressionStatement:
                 case SyntaxKind.Block:
                 case SyntaxKind.EqualsValueClause:
@@ -223,7 +238,7 @@ namespace Quack.Analysis
 
 
 
-            return nodeList;
+            return (nodeList, memberUsageNodes);
         }
 
         private List<TypeEvidence> AnalyzeNode(SyntaxNode node)
@@ -236,16 +251,25 @@ namespace Quack.Analysis
             // Extract evidence from the toplevel node 
             allowList.AddRange(ruleSet.ExtractEvidence(node));
 
-            // Extract evidence from all user nodes
-            var userNodes = UserNodes(node);
-            if (userNodes == null)
+            // Retrieve all users of the present node, and nodes of all member usages on the present node
+            (var rootUserNodes, var memberNodes) = UserNodes(node);
+            if (rootUserNodes == null)
             {
                 logger.Info("At least one user node could not be analyzed, cannot resetrict type further");
                 // Exits early, type evidence SHOULD have added all possible types
                 return allowList;
             }
 
-            foreach (var userNode in userNodes)
+            // Analyze each member-use node
+            foreach (var memberNode in memberNodes)
+            {
+                var memberAllowList = AnalyzeNode(memberNode);
+                // For now, we don't track member-use evidence separately since
+                // it all gets combined in the final binder anyways (but might be nice to separate for debugging)
+                allowList.AddRange(memberAllowList);
+            }
+
+            foreach (var userNode in rootUserNodes)
             {
                 var userAllowList = AnalyzeNode(userNode);
                 allowList.AddRange(userAllowList);
