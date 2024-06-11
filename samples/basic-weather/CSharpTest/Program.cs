@@ -2,6 +2,48 @@
 
 namespace SerializeBasic
 {
+
+    public class EasyExploitGadget
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+
+        public EasyExploitGadget(string name, string description)
+        {
+            Name = "Evil Gadget";
+            Description = "Do evil things";
+        }
+
+        // tostring
+        public override string ToString()
+        {
+            return "Evil Gadget";
+        }
+    }
+
+    public class RadarInfo
+    {
+        public string? RadarType { get; set; }
+        public int Range { get; set; }
+
+        public RadarInfo(string radarType, int range)
+        {
+            RadarType = radarType;
+            Range = range;
+        }
+
+        public string GetRadarType()
+        {
+            return RadarType;
+        }
+
+        // to string
+        public override string ToString()
+        {
+            return "RadarInfo: " + RadarType + "-" + Range.ToString();
+        }
+    }
+
     public class WindForecast
     {
         public string? Direction { get; set; }
@@ -19,6 +61,8 @@ namespace SerializeBasic
         public int TemperatureCelsius { get; set; }
         public string? Summary { get; set; }
         public WindForecast Wind { get; set; }
+        // possible vulnerability: too broad of a type
+        public System.Object RadarInfo { get; set; }
     }
 
     public class DurangoWeatherForecast : WeatherForecast
@@ -34,7 +78,9 @@ namespace SerializeBasic
             "SerializeBasic.WeatherForecast",
             "SerializeBasic.DurangoWeatherForecast",
             "SerializeBasic.WindForecast",
-            "SerializeBasic.DurangoWindForecast"
+            "SerializeBasic.DurangoWindForecast",
+            "SerializeBasic.RadarInfo",
+            "SerializeBasic.EasyExploitGadget" /* For testing purposes, allow EasyExploitGadget */
         };
         public Type BindToType(string assemblyName, string typeName)
         {
@@ -71,6 +117,8 @@ namespace SerializeBasic
         private static void TestDurangoReport(DurangoWeatherForecast report)
         {
             Console.WriteLine(report.FireDanger);
+            Console.WriteLine(report.RadarInfo.ToString());
+            Console.WriteLine(((RadarInfo)report.RadarInfo).GetRadarType());
         }
         public static void Main()
         {
@@ -98,7 +146,8 @@ namespace SerializeBasic
                 {
                     Direction = "North",
                     Speed = 10
-                }
+                },
+                RadarInfo = new RadarInfo("Big", 5)
             };
             Console.WriteLine("Serializing with System.Text.Json");
             string jsonString = System.Text.Json.JsonSerializer.Serialize(weatherForecast);
@@ -141,7 +190,8 @@ namespace SerializeBasic
                     Speed = 10,
                     FireNadoDanger = 10
                 },
-                FireDanger = 5
+                FireDanger = 5,
+                RadarInfo = new RadarInfo("Small", 2)
             };
 
             Console.WriteLine("Serializing Child with Newtonsoft.Json and TypeHandling=All");
