@@ -175,6 +175,12 @@ namespace SerializeBasic
                 SerializationBinder = new WeatherForecastSerializationBinder()
             });
 
+            var secondDeserializedWeatherForecast = deserializedWeatherForecast;
+            var thirdDeserializedWeatherForecast = deserializedWeatherForecast;
+
+            // Could be anything now
+            MysteryBox(secondDeserializedWeatherForecast);
+
             Console.Write(deserializedWeatherForecast.Summary);
             Console.WriteLine(deserializedWeatherForecast.Wind.Direction);
 
@@ -217,6 +223,12 @@ namespace SerializeBasic
             Console.WriteLine(((DurangoWeatherForecast)durangoDeserialized).FireDanger);
 
 
+        }
+
+        private static void MysteryBox(WeatherForecast? deserializedWeatherForecast)
+        {
+            // Assume this is some external API with an unkown implementation
+            Console.Write(deserializedWeatherForecast);
         }
     }
 }
